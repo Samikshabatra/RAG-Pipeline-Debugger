@@ -38,18 +38,20 @@ def _format_context(chunks: list[RetrievedChunk]) -> str:
     )
 
 
-def generate(inp: GenerateInput) -> GenerateOutput:
+def generate(inp: GenerateInput, model: str | None = None) -> GenerateOutput:
     prompt = PROMPT_TEMPLATE.format(
         context=_format_context(inp.chunks), question=inp.query
     )
-    raw = ollama_client.generate(prompt, temperature=0.2, num_predict=1024, fmt="json")
+    raw = ollama_client.generate(
+        prompt, model=model, temperature=0.2, num_predict=1024, fmt="json"
+    )
 
     answer, confidence = _parse(raw)
     return GenerateOutput(
         answer=answer,
         confidence=confidence,
         prompt=prompt,
-        model=get_settings().ollama_model,
+        model=model or get_settings().ollama_model,
     )
 
 

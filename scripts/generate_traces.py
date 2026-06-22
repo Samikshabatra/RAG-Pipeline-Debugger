@@ -21,9 +21,14 @@ from backend.corpus import DOCUMENTS, TEST_QUERIES
 from backend.pipeline import vector_store
 from backend.tracing import store, tracer
 
+# Each config is (label, levers). "weak-gen" keeps retrieval STRONG (good
+# context) but swaps in a small model as the generator, so failures that occur
+# are genuine GENERATION failures (good context, bad answer) rather than
+# retrieval problems.
 CONFIGS = [
-    {"label": "good", "use_reranker": True, "top_n": 4},
-    {"label": "degraded", "use_reranker": False, "top_n": 1},
+    {"label": "good", "use_reranker": True, "top_n": 4, "generator_model": None},
+    {"label": "degraded", "use_reranker": False, "top_n": 1, "generator_model": None},
+    {"label": "weak-gen", "use_reranker": True, "top_n": 4, "generator_model": "llama3.2:3b"},
 ]
 
 
@@ -42,12 +47,14 @@ def main() -> None:
     n_pass = n_fail = 0
     for cfg in CONFIGS:
         print(f"\n=== config: {cfg['label']} "
-              f"(reranker={cfg['use_reranker']}, top_n={cfg['top_n']}) ===")
+              f"(reranker={cfg['use_reranker']}, top_n={cfg['top_n']}, "
+              f"gen={cfg['generator_model'] or 'default'}) ===")
         for q in TEST_QUERIES:
             t = tracer.run_traced(
                 q.query,
                 top_n=cfg["top_n"],
                 use_reranker=cfg["use_reranker"],
+                generator_model=cfg["generator_model"],
                 expected_doc_id=q.expected_doc_id,
             )
             n_pass += int(t.status == "pass")

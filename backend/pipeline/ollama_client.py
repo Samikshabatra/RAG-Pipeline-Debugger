@@ -31,18 +31,20 @@ def _strip_thinking(text: str) -> str:
 def generate(
     prompt: str,
     *,
+    model: str | None = None,
     temperature: float = 0.2,
     num_predict: int = 1024,
     fmt: str | None = None,
 ) -> str:
     """Call Ollama /api/generate and return the cleaned text response.
 
-    `fmt="json"` asks the model to emit strict JSON (used for structured
+    `model` overrides the configured default (e.g. a weak generator vs. a strong
+    judge). `fmt="json"` asks the model to emit strict JSON (used for structured
     answer+confidence and judge scores).
     """
     cfg = get_settings()
     payload: dict = {
-        "model": cfg.ollama_model,
+        "model": model or cfg.ollama_model,
         "prompt": prompt,
         "stream": False,
         "think": False,  # disable qwen3 thinking; ignored by non-thinking models
@@ -61,7 +63,7 @@ def generate(
     except requests.RequestException as e:
         raise OllamaError(
             f"Could not reach Ollama at {cfg.ollama_base_url}. "
-            f"Is it running and is '{cfg.ollama_model}' pulled? ({e})"
+            f"Is it running and is '{model or cfg.ollama_model}' pulled? ({e})"
         ) from e
 
     data = resp.json()

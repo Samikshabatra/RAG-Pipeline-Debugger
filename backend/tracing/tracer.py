@@ -41,6 +41,7 @@ def run_traced(
     top_k: int | None = None,
     top_n: int | None = None,
     use_reranker: bool | None = None,
+    generator_model: str | None = None,
     expected_doc_id: str | None = None,
     persist: bool = True,
 ) -> Trace:
@@ -87,7 +88,7 @@ def run_traced(
     # --- Step 3: Generate ---
     t2 = perf_counter()
     generated = generator.generate(
-        GenerateInput(query=query, chunks=reranked_chunks)
+        GenerateInput(query=query, chunks=reranked_chunks), model=generator_model
     )
     spans.append(
         Span(

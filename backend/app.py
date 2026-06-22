@@ -16,6 +16,7 @@ from .config import get_settings
 from .corpus import DOCUMENTS
 from .pipeline import ollama_client, rag_pipeline, vector_store
 from .models import PipelineResult
+from .analysis import analyzer
 from .tracing import store as trace_store
 from .tracing import tracer
 from .tracing.trace_models import Trace, TraceSummary
@@ -91,3 +92,17 @@ def get_trace(trace_id: str) -> Trace:
 @app.delete("/traces")
 def clear_traces() -> dict:
     return {"deleted": trace_store.clear()}
+
+
+# --------------------------------------------------------------------------- #
+# Analysis (backward trace analyzer / LLM-as-judge)
+# --------------------------------------------------------------------------- #
+@app.post("/traces/{trace_id}/analyze", response_model=Trace)
+def analyze_trace(trace_id: str) -> Trace:
+    """Grade each step with the LLM-as-judge and attribute the root cause."""
+    t = trace_store.get(trace_id)
+    if t is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+    analyzer.analyze(t)
+    trace_store.save(t)
+    return t

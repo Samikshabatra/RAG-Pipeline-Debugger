@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     embedding_model: str = "all-MiniLM-L6-v2"
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
+    # --- LLM-as-judge (Phase 3). Empty => reuse ollama_model. Keeping the judge
+    #     STRONG (qwen3.5) while the generator can be weak is intentional: a
+    #     reliable judge grading a fallible generator. ---
+    judge_model: str = ""
+    judge_pass_threshold: int = 4   # a step scoring < this is flagged as weak
+
     # --- Retrieval knobs (also the "config levers" used to induce/repair
     #     failures for the debugger demo) ---
     retrieve_top_k: int = 8     # how many ChromaDB pulls before rerank
