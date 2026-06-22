@@ -30,9 +30,11 @@ class Settings(BaseSettings):
     embedding_model: str = "all-MiniLM-L6-v2"
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
-    # --- Retrieval knobs ---
-    retrieve_top_k: int = 8   # how many ChromaDB pulls before rerank
-    rerank_top_n: int = 4     # how many survive rerank into the generator
+    # --- Retrieval knobs (also the "config levers" used to induce/repair
+    #     failures for the debugger demo) ---
+    retrieve_top_k: int = 8     # how many ChromaDB pulls before rerank
+    rerank_top_n: int = 4       # how many survive rerank into the generator
+    use_reranker: bool = True   # off => feed raw retrieval top_n (weaker config)
 
     # --- Local state ---
     chroma_dir: str = "data/chroma"

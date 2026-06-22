@@ -220,6 +220,28 @@ DOCUMENTS: list[Document] = [
         ),
     ),
 
+    # ----- Phone support (near-duplicate pair; "phone support response time"
+    #       lives in the Enterprise doc = wrong answer, so it out-ranks the
+    #       Free-plan doc that *negates* phone support) -----
+    Document(
+        doc_id="phone-free",
+        title="Free Plan Support",
+        category="support",
+        text=(
+            "The Free plan does not include phone support; only community "
+            "forums are available for help."
+        ),
+    ),
+    Document(
+        doc_id="phone-enterprise",
+        title="Enterprise Support",
+        category="support",
+        text=(
+            "Enterprise customers get a dedicated phone support line with a "
+            "1-hour response time, available 24/7."
+        ),
+    ),
+
     # ----- Security / misc (distractors) -----
     Document(
         doc_id="sec-2fa",
@@ -349,6 +371,16 @@ TEST_QUERIES: list[TestQuery] = [
             "period' (= 30 days, the WRONG answer) so the reranker ranks it #1. "
             "At tight top_n the correct monthly doc is dropped -> retrieval "
             "failure; the system then refuses or answers '30 days'."
+        ),
+        expect_fail=True,
+    ),
+    TestQuery(
+        query="What is the phone support response time on the Free plan?",
+        expected_doc_id="phone-free",
+        trap=(
+            "'phone support' + 'response time' live in the Enterprise doc "
+            "(1-hour, the WRONG answer for Free), which out-ranks the Free-plan "
+            "doc that says phone support isn't offered. Dropped at tight top_n."
         ),
         expect_fail=True,
     ),
