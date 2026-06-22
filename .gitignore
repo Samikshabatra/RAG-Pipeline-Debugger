@@ -15,10 +15,11 @@ data/traces.db
 # Env / secrets (none needed for this project, but never commit local config)
 .env
 
-# OS / editor
+# OS / editor / tooling
 .DS_Store
 .idea/
 .vscode/
+.claude/
 
 # Build prompt spec (kept local, not part of the public repo)
 RAG_Pipeline_Debugger_Local_NoAPIKey.pdf

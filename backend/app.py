@@ -81,6 +81,18 @@ def list_traces(limit: int = 200) -> list[TraceSummary]:
     return trace_store.list_summaries(limit=limit)
 
 
+@app.get("/traces/full", response_model=list[Trace])
+def list_traces_full(limit: int = 500) -> list[Trace]:
+    """All traces in full (spans included) in a single response -- avoids the
+    dashboard making one round-trip per trace."""
+    out = []
+    for summ in trace_store.list_summaries(limit=limit):
+        t = trace_store.get(summ.trace_id)
+        if t is not None:
+            out.append(t)
+    return out
+
+
 @app.get("/traces/{trace_id}", response_model=Trace)
 def get_trace(trace_id: str) -> Trace:
     t = trace_store.get(trace_id)

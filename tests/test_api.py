@@ -47,3 +47,25 @@ def test_list_traces(client):
     assert r.status_code == 200
     assert isinstance(r.json(), list)
     assert len(r.json()) >= 1
+
+
+def test_traces_full_includes_spans(client):
+    client.post("/trace", json={"query": "vacation days"})
+    r = client.get("/traces/full")
+    assert r.status_code == 200
+    assert len(r.json()) >= 1
+    assert len(r.json()[0]["spans"]) == 3  # full traces carry spans
+
+
+def test_analyze_endpoint(client, monkeypatch):
+    # mock the judge so analysis is offline + deterministic
+    from backend.analysis import analyzer
+    monkeypatch.setattr(analyzer.judge, "score_context_relevance", lambda q, c: (5, "ok"))
+    monkeypatch.setattr(analyzer.judge, "score_answer", lambda q, c, a: (5, "ok"))
+
+    tid = client.post("/trace", json={"query": "vacation days"}).json()["trace_id"]
+    r = client.post(f"/traces/{tid}/analyze")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["verdict"] is not None
+    assert all(s["judge_score"] == 5 for s in body["spans"])
