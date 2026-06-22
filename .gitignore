@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+
+# Local data / models / traces
+data/chroma/
+data/*.db
+data/traces.db
+*.sqlite
+*.sqlite3
+
+# Env / secrets (none needed for this project, but never commit local config)
+.env
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Build prompt spec (kept local, not part of the public repo)
+RAG_Pipeline_Debugger_Local_NoAPIKey.pdf
