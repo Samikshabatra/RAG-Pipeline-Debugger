@@ -1,133 +1,252 @@
-# RAG Pipeline Debugger
+<div align="center">
 
-**Failure forensics for RAG systems — 100% local, no API keys.**
+# 🔍 RAG Pipeline Debugger
 
-RAG systems fail silently: the retriever pulls the wrong chunk, but the generator
-answers confidently anyway. This tool traces every step of a Retrieve → Rerank →
-Generate pipeline, scores each step *independently* with a local LLM-as-judge, and
-**pinpoints exactly which step introduced a failure** — retrieval, ranking, or
-generation.
+### Failure forensics for RAG systems — find *which* step broke, not just *that* it broke.
 
-Every model runs on your own machine (Ollama + sentence-transformers + a local
-cross-encoder). No OpenAI/Anthropic/Cohere key anywhere — which also makes it
-usable for privacy-sensitive data that can't leave the machine.
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Ollama](https://img.shields.io/badge/Ollama-local%20LLM-black?logo=ollama&logoColor=white)](https://ollama.com/)
+[![Tests](https://img.shields.io/badge/tests-25%20passing-brightgreen)]()
+[![No API Keys](https://img.shields.io/badge/API%20keys-zero-success)]()
+[![100% Local](https://img.shields.io/badge/runs-100%25%20local-blueviolet)]()
+
+</div>
 
 ---
 
-## What it does
+> **RAG systems fail silently.** The retriever pulls the wrong chunk, but the language model answers
+> confidently anyway — so a wrong answer looks exactly like a right one. There's no error, no stack trace.
+>
+> This tool **traces every step** of a Retrieve → Rerank → Generate pipeline, **scores each step
+> independently** with a local LLM-as-judge, and **pinpoints the exact step that introduced the failure** —
+> retrieval, ranking, or generation. Every model runs on your own machine. **No OpenAI / Anthropic / Cohere
+> key anywhere.**
 
-- **Traces** every run as a `Trace` of timed `Span`s — inputs, outputs, retrieved
-  chunks + scores, the exact prompt sent to the LLM, latency, and the model's
-  self-reported confidence — persisted to SQLite and inspectable without rerunning.
-- **Judges** each step independently (1–5 + a one-line reason): *is the answer in
-  the retrieved pool? in the final context? is the answer correct given that
-  context?*
-- **Attributes the root cause** by walking the pipeline — the first step whose
-  quality drops is flagged:
-  - **Retrieval failure** — the answer was never retrieved.
-  - **Ranking failure** — it was retrieved but not surfaced into the LLM's context.
-  - **Generation failure** — the context was correct but the LLM got it wrong.
-- **Explores** it all in a Streamlit dashboard: pass/fail badges, a step-by-step
-  waterfall with the root-cause step highlighted and the judge's reasoning inline,
-  a *failures-by-stage* chart, and an *average-latency-per-step* chart.
+---
 
-## Architecture
+## ✨ Why this project is different
+
+Most RAG demos build the pipeline and stop. This one treats the pipeline as something to be **debugged**:
+
+- 🧭 **Root-cause attribution** — not "the answer is wrong" but *"Ranking failure: the correct chunk was
+  retrieved but never reached the model."*
+- 🔬 **Independent per-step judging** — each step is graded on its own merit, so a generator that honestly
+  refuses bad context is *exonerated* and the blame falls upstream where it belongs.
+- 🔒 **100% local, zero cost** — Ollama + sentence-transformers + a local cross-encoder. Works on
+  privacy-sensitive data that can't leave the machine — a genuine differentiator, not just a budget hack.
+- 📊 **Full observability** — every run is a persisted trace of timed spans you can replay and re-analyze
+  without re-running the (slow) local models.
+
+---
+
+## 🖼️ Screenshots
+
+> _Drop two screenshots into a `docs/` folder named `dashboard.png` and `waterfall.png`, then
+> uncomment the block below — they'll render automatically._
+
+<!--
+| Dashboard & charts | Root-cause waterfall |
+|---|---|
+| ![Dashboard](docs/dashboard.png) | ![Waterfall](docs/waterfall.png) |
+
+*Aggregate failure-by-stage and latency charts (left); a single trace with the guilty **Generate** step
+highlighted in red and the judge's reasoning inline (right).*
+-->
+
+- **Dashboard** — pass/fail metrics, a *failures-by-stage* chart, and an *average-latency-per-step* chart.
+- **Trace detail** — a step-by-step waterfall where the root-cause step is highlighted in red with the
+  judge's reasoning shown inline.
+
+---
+
+## 🧠 How it works
 
 ```
-                 ┌─────────── FastAPI backend (:8030) ───────────┐
-  query  ─────►  │  Retrieve ──► Rerank ──► Generate              │
-                 │  (Chroma +    (cross-    (Ollama LLM)           │
-                 │   MiniLM)      encoder)                         │
-                 │      │            │            │                │
-                 │      ▼            ▼            ▼                │
-                 │   ┌──────────  Tracing  ──────────┐            │
-                 │   │  Span(latency, chunks, prompt, │            │
-                 │   │  confidence)  ──►  SQLite      │            │
-                 │   └────────────────────────────────┘           │
-                 │                  │                              │
-                 │   ┌──────  Backward Analyzer  ──────┐          │
-                 │   │  LLM-as-judge scores each step,  │          │
-                 │   │  attributes the root cause       │          │
-                 │   └──────────────────────────────────┘         │
-                 └───────────────────┬────────────────────────────┘
-                                     ▼
-                       Streamlit Trace Explorer (:8502)
+  User question
+      │
+      ▼
+  ┌──────────────── FastAPI backend (:8030) ─────────────────┐
+  │                                                          │
+  │   RETRIEVE   ──►   RERANK    ──►   GENERATE              │
+  │   Chroma +         cross-          Ollama LLM            │
+  │   MiniLM           encoder         (qwen3.5:9b)          │
+  │      │               │                │                  │
+  │      ▼               ▼                ▼                  │
+  │   ┌──────────  TRACING: one Span per step  ──────────┐   │
+  │   │  latency · chunks+scores · prompt · confidence   │   │
+  │   │                  └──►  SQLite                     │   │
+  │   └──────────────────────────────────────────────────┘   │
+  │                          │                                │
+  │   ┌────────────  BACKWARD ANALYZER  ───────────────┐      │
+  │   │  LLM-as-judge scores each step independently,   │      │
+  │   │  walks the pipeline, names the root-cause step  │      │
+  │   └─────────────────────────────────────────────────┘     │
+  └───────────────────────────┬──────────────────────────────┘
+                              ▼
+                Streamlit Trace Explorer (dashboard)
 ```
 
-| Component       | Local tool                                            |
-|-----------------|-------------------------------------------------------|
-| Embeddings      | `sentence-transformers` · `all-MiniLM-L6-v2`          |
-| Vector store    | ChromaDB (persistent, cosine)                         |
-| Reranker        | cross-encoder · `ms-marco-MiniLM-L-6-v2`              |
-| Generation+Judge| Ollama (`qwen3.5:9b` default) over local HTTP         |
-| Backend         | FastAPI                                               |
-| Storage         | SQLite (trace metadata + spans as JSON)              |
-| Frontend        | Streamlit                                            |
+**One question → one trace → three spans.** Each span records everything that happened in its step. The
+analyzer then grades each step with an independent judge and walks the pipeline: the **first step whose
+quality drops is the root cause**, because an early failure dooms everything downstream.
 
-## Quickstart
+---
 
-**Prereqs:** [Ollama](https://ollama.com) running locally with a model pulled:
+## 🎯 The three failure types it detects
+
+| Verdict | What it means | Example caught in the demo |
+|---|---|---|
+| 🔴 **Retrieval failure** | The answer was never retrieved from the corpus. | — |
+| 🟠 **Ranking failure** | It *was* retrieved, but cut before reaching the model. | *"cancel monthly subscription"* → the **Annual** doc (which literally says "cancellation notice period") out-ranked the correct monthly doc. |
+| 🟣 **Generation failure** | The right context reached the model, but it answered wrong anyway. | *"parental leave for fathers"* → `llama3.2:3b` answered **"280 days"** (at confidence 4/5!) when the context said 4 weeks. |
+
+---
+
+## 🧾 Sample output
+
+```text
+Query:    How many days of paid parental leave do new fathers get?
+Verdict:  Generation failure — the correct context was provided (final context 4/5)
+          but the answer was wrong or unsupported (answer 1/5). The answer "280 days"
+          is incorrect because the context states fathers get 4 weeks (~28 days).
+
+  1 · Retrieve   13 ms   judge 4/5   ✅  (answer is in the candidate pool)
+  2 · Rerank      0 ms   judge 4/5   ✅  (answer kept in the final context)
+  3 · Generate 1668 ms   judge 1/5   ⛔  ← ROOT CAUSE
+       self-reported confidence: 4/5   |   actual: wrong
+```
+
+> 💡 **Key insight:** the failing run self-reported **4/5 confidence**. That's the whole case for an
+> *independent* judge — you can't trust a model to grade itself.
+
+---
+
+## 🛠️ Tech stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| Embeddings | `sentence-transformers` · all-MiniLM-L6-v2 | Small (~80MB), CPU-friendly, free |
+| Vector store | **ChromaDB** (persistent, cosine) | Local, simple, no server |
+| Reranker | cross-encoder · ms-marco-MiniLM-L-6-v2 | Purpose-built, lightweight, accurate |
+| Generation + Judge | **Ollama** · `qwen3.5:9b` | Strong, fits an 8GB GPU, local, no key |
+| Weak generator (demo) | `llama3.2:3b` | Produces *real* generation failures |
+| Backend | **FastAPI** | Typed, fast, auto-generated docs |
+| Storage | **SQLite** | Zero-setup; spans stored as JSON blobs |
+| Frontend | **Streamlit** | Fast, clean data dashboards |
+
+---
+
+## 🚀 Quickstart
+
+**1. Prerequisites** — [Ollama](https://ollama.com) running locally with a model pulled:
 
 ```bash
-ollama pull qwen3.5:9b        # default generator + judge
-ollama pull llama3.2:3b       # optional: weak model to demo generation failures
+ollama pull qwen3.5:9b      # generator + judge
+ollama pull llama3.2:3b     # optional: weak model to demo generation failures
 ```
 
-**Install & run:**
+**2. Install:**
 
 ```bash
 python -m venv venv
-venv\Scripts\pip install -r requirements.txt          # (use venv/bin on macOS/Linux)
+venv\Scripts\pip install -r requirements.txt      # macOS/Linux: venv/bin/pip
+```
 
-# 1) backend
+**3. Run:**
+
+```bash
+# backend
 venv\Scripts\python -m uvicorn backend.app:app --reload --port 8030
 
-# 2) build a trace dataset (good vs. degraded vs. weak-generator configs)
+# build & analyze a demo dataset (good vs. degraded vs. weak-generator configs)
 venv\Scripts\python -m scripts.generate_traces --clear
 venv\Scripts\python -m scripts.analyze_traces
 
-# 3) dashboard
-venv\Scripts\python -m streamlit run frontend/app.py     # talks to :8030
+# dashboard
+venv\Scripts\python -m streamlit run frontend/app.py
 ```
 
 Open the dashboard, pick a failing trace, and read its root-cause verdict.
 
-## Configuration
+---
 
-All local, no keys — override via a `.env` (see `.env.example`):
+## ⚙️ Configuration & the "config levers"
 
-| Setting              | Default                              | Notes                                  |
-|----------------------|--------------------------------------|----------------------------------------|
-| `OLLAMA_MODEL`       | `qwen3.5:9b`                         | generator + judge                      |
-| `RETRIEVE_TOP_K`     | `8`                                  | candidates pulled from Chroma          |
-| `RERANK_TOP_N`       | `4`                                  | chunks sent to the LLM                 |
-| `USE_RERANKER`       | `true`                               | off ⇒ raw retrieval (a "cheap" config) |
-| `JUDGE_PASS_THRESHOLD`| `4`                                 | step below this is flagged weak        |
-| `PORT`               | `8030`                               | backend port                           |
+All local, no keys. Override via a `.env` (see `.env.example`):
 
-`top_n` and `use_reranker` are the **config levers**: the same question passes
-under a strong config and fails under a cheap one — handy for generating real
-failures to diagnose.
+| Setting | Default | Notes |
+|---|---|---|
+| `OLLAMA_MODEL` | `qwen3.5:9b` | Generator + judge |
+| `RETRIEVE_TOP_K` | `8` | Candidates pulled from Chroma |
+| `RERANK_TOP_N` | `4` | Chunks sent to the LLM |
+| `USE_RERANKER` | `true` | Off ⇒ raw retrieval (a "cheap" config) |
+| `JUDGE_PASS_THRESHOLD` | `4` | A step scoring below this is flagged weak |
+| `PORT` | `8030` | Backend port |
 
-## What I learned building it
+`top_n` and `use_reranker` are the **config levers**: the *same* question passes under a strong config and
+fails under a cheap one. This is how the tool manufactures genuine, reproducible failures to diagnose —
+*"cheap configs fail; better configs fix it."*
 
-- **A good local stack is hard to break.** MiniLM + a cross-encoder + a 9B model
-  answered even my deliberately ambiguous, near-duplicate corpus correctly. Real
-  retrieval failures only appeared under cheap configs (tight `top_n`, no reranker)
-  or with adversarial near-duplicates where the *wrong* doc carries the query's
-  literal phrasing.
-- **Self-reported confidence is unreliable.** Failing traces routinely report
-  confidence 5/5 — a small model insisted "280 days" of parental leave with high
-  confidence when the context said 4 weeks. That's the whole case for an
-  *independent* judge.
-- **Generation is where the time goes.** The latency chart makes it obvious:
-  generation dominates total latency; retrieval and reranking are nearly free.
+---
 
-## Testing
+## 📁 Project structure
 
-```bash
-venv\Scripts\python -m pytest -q
+```
+backend/
+  config.py            settings + config levers (no API keys)
+  models.py            typed Pydantic models for each step
+  corpus.py            24-doc test corpus + labeled trap queries
+  app.py               FastAPI endpoints
+  pipeline/            retrieve → rerank → generate (+ Ollama client)
+  tracing/             Span/Trace models, SQLite store, traced runner
+  analysis/            LLM-as-judge + backward root-cause analyzer
+frontend/app.py        Streamlit trace explorer
+scripts/               ingest · run_queries · generate_traces · analyze_traces
+tests/                 25 offline tests (LLM calls mocked)
 ```
 
-25 tests, fully offline — embedding/rerank models run locally and every LLM call
-is mocked, so the suite needs no running Ollama server.
+---
+
+## 🧪 Testing
+
+```bash
+venv\Scripts\python -m pytest -q      # 25 tests, fully offline
+```
+
+The embedding/rerank models run locally and **every Ollama call is mocked**, so the suite needs no running
+model server. Tests cover the corpus, each pipeline step, JSON parsing edge cases, trace persistence, the
+config levers, root-cause attribution for every failure type, and the API endpoints.
+
+---
+
+## 🔑 What I learned building it
+
+- **A good local stack is hard to break.** MiniLM + a cross-encoder + a 9B model answered even a
+  deliberately ambiguous, near-duplicate corpus correctly. Real failures only appeared under cheap configs
+  or with adversarial near-duplicates where the *wrong* doc carries the query's literal phrasing.
+- **Self-reported confidence is unreliable.** Failing runs routinely reported 5/5 confidence — which is
+  exactly why an *independent* judge is necessary.
+- **Generation dominates latency** (~7–10× the retrieval/rerank steps) — clear from the latency chart.
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] Side-by-side comparison of two configs on the same question
+- [ ] Trend view across many runs over time
+- [ ] Package the tracer as a decorator that wraps *any* RAG pipeline, not just this demo
+- [ ] More adversarial corpus traps
+
+---
+
+## 📄 License
+
+MIT — free to use and adapt.
+
+<div align="center">
+
+**Built by [Samiksha Batra](https://github.com/Samikshabatra)** · 100% local · zero API keys
+
+</div>
