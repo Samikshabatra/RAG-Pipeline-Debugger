@@ -9,7 +9,7 @@ Tracing endpoints arrive in Phase 2.
 """
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from .config import get_settings
@@ -17,6 +17,8 @@ from .corpus import DOCUMENTS
 from .pipeline import ollama_client, rag_pipeline, vector_store
 from .models import PipelineResult
 from .analysis import analyzer
+from .ingestion import service as ingest_service
+from .ingestion.loaders import UnsupportedFile
 from .tracing import store as trace_store
 from .tracing import tracer
 from .tracing.trace_models import Trace, TraceSummary
@@ -35,6 +37,7 @@ class TraceRequest(BaseModel):
     top_k: int | None = None
     top_n: int | None = None
     use_reranker: bool | None = None
+    use_web_fallback: bool | None = None
     expected_doc_id: str | None = None
 
 
@@ -56,6 +59,22 @@ def ingest() -> dict:
     return {"indexed": n}
 
 
+@app.post("/documents/upload")
+async def upload_documents(files: list[UploadFile]) -> dict:
+    """Upload your own files (PDF / Word / txt / md). Each is extracted, chunked,
+    and indexed -- no need to edit the corpus by hand."""
+    results = []
+    for f in files:
+        data = await f.read()
+        try:
+            results.append({"filename": f.filename, **ingest_service.ingest_file(f.filename, data)})
+        except UnsupportedFile as e:
+            raise HTTPException(status_code=415, detail=str(e))
+    total = sum(r["chunks_indexed"] for r in results)
+    return {"files": results, "total_chunks_indexed": total,
+            "documents_indexed": vector_store.count()}
+
+
 @app.post("/query", response_model=PipelineResult)
 def query(req: QueryRequest) -> PipelineResult:
     return rag_pipeline.run(req.query, top_k=req.top_k, top_n=req.top_n)
@@ -72,6 +91,7 @@ def trace(req: TraceRequest) -> Trace:
         top_k=req.top_k,
         top_n=req.top_n,
         use_reranker=req.use_reranker,
+        use_web_fallback=req.use_web_fallback,
         expected_doc_id=req.expected_doc_id,
     )
 

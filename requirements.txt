@@ -9,6 +9,16 @@ uvicorn[standard]>=0.29
 pydantic>=2.6
 pydantic-settings>=2.2
 python-dotenv>=1.0
+python-multipart>=0.0.9          # file uploads (document ingest)
+
+# ---- Document ingestion (upload your own files) ----
+pypdf>=4.0                       # PDF text extraction
+python-docx>=1.1                 # .docx text extraction
+
+# ---- Web-search fallback (agentic RAG, keyless) ----
+ddgs>=6.0                        # DuckDuckGo search, no API key
+beautifulsoup4>=4.12             # extract main text from fetched pages
+lxml>=5.0                        # fast HTML parser for BeautifulSoup
 
 # ---- Frontend (trace explorer, Phase 4) ----
 streamlit>=1.33

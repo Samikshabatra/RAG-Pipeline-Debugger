@@ -57,6 +57,19 @@ def test_traces_full_includes_spans(client):
     assert len(r.json()[0]["spans"]) == 3  # full traces carry spans
 
 
+def test_upload_documents(client):
+    files = [("files", ("note.txt", b"The mascot of our team is a purple otter named Glitch.", "text/plain"))]
+    r = client.post("/documents/upload", files=files)
+    assert r.status_code == 200
+    assert r.json()["total_chunks_indexed"] >= 1
+
+
+def test_upload_rejects_unsupported(client):
+    files = [("files", ("archive.zip", b"PK\x03\x04", "application/zip"))]
+    r = client.post("/documents/upload", files=files)
+    assert r.status_code == 415
+
+
 def test_analyze_endpoint(client, monkeypatch):
     # mock the judge so analysis is offline + deterministic
     from backend.analysis import analyzer

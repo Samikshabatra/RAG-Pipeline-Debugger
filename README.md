@@ -38,6 +38,11 @@ Most RAG demos build the pipeline and stop. This one treats the pipeline as some
   privacy-sensitive data that can't leave the machine — a genuine differentiator, not just a budget hack.
 - 📊 **Full observability** — every run is a persisted trace of timed spans you can replay and re-analyze
   without re-running the (slow) local models.
+- 📥 **Bring your own documents** — upload PDFs / Word / text files in the dashboard; they're auto-extracted,
+  chunked, embedded, and indexed. No editing code.
+- 🌐 **Web-search fallback (agentic RAG)** — when the local corpus has nothing relevant, the pipeline
+  automatically searches the web (keyless DuckDuckGo), fetches the top pages, and answers from those —
+  so out-of-domain questions like *"what is cloud computing?"* still get a real, sourced answer.
 
 ---
 
@@ -172,6 +177,20 @@ Open the dashboard, pick a failing trace, and read its root-cause verdict.
 
 ---
 
+## 📥 Using your own data
+
+You don't have to touch any code to point this at your own content:
+
+- **Upload files** — in the dashboard sidebar, drop in PDFs / Word / `.txt` / `.md` files and click
+  *Index uploaded files*. They're extracted, chunked, embedded, and added to the index immediately
+  (also available as `POST /documents/upload`).
+- **Web fallback** — flip on *Web-search fallback* (or `ENABLE_WEB_FALLBACK=true`). For any question the
+  local corpus can't answer, the system searches the web and answers from the fetched pages, clearly
+  marked as a web-sourced answer in the trace.
+
+> RAG always retrieves from *some* source. This project supports three: the built-in corpus, your uploaded
+> files, and the live web — so "I have to hand-write documents" is never a constraint.
+
 ## ⚙️ Configuration & the "config levers"
 
 All local, no keys. Override via a `.env` (see `.env.example`):
@@ -183,6 +202,8 @@ All local, no keys. Override via a `.env` (see `.env.example`):
 | `RERANK_TOP_N` | `4` | Chunks sent to the LLM |
 | `USE_RERANKER` | `true` | Off ⇒ raw retrieval (a "cheap" config) |
 | `JUDGE_PASS_THRESHOLD` | `4` | A step scoring below this is flagged weak |
+| `ENABLE_WEB_FALLBACK` | `false` | Search the web when local retrieval is weak |
+| `WEB_FALLBACK_THRESHOLD` | `0.0` | Below this rerank score ⇒ trigger web search |
 | `PORT` | `8030` | Backend port |
 
 `top_n` and `use_reranker` are the **config levers**: the *same* question passes under a strong config and
@@ -199,7 +220,8 @@ backend/
   models.py            typed Pydantic models for each step
   corpus.py            24-doc test corpus + labeled trap queries
   app.py               FastAPI endpoints
-  pipeline/            retrieve → rerank → generate (+ Ollama client)
+  pipeline/            retrieve → rerank → generate (+ Ollama client, web search)
+  ingestion/           upload → extract text → chunk → index your own files
   tracing/             Span/Trace models, SQLite store, traced runner
   analysis/            LLM-as-judge + backward root-cause analyzer
 frontend/app.py        Streamlit trace explorer

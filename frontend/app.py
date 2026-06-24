@@ -80,11 +80,14 @@ with st.sidebar:
         top_n = st.slider("top_n (chunks to the LLM)", 1, 8, 4)
         weak = st.toggle("Weak generator (llama3.2:3b)", value=False,
                          help="Induce generation failures with a small model")
+        web = st.toggle("Web-search fallback", value=False,
+                        help="If the local corpus has nothing relevant, search the web")
         run_analyze = st.checkbox("Analyze after running", value=True)
         submitted = st.form_submit_button("Run", use_container_width=True)
 
     if submitted and q.strip():
-        payload = {"query": q, "top_n": top_n, "use_reranker": use_reranker}
+        payload = {"query": q, "top_n": top_n, "use_reranker": use_reranker,
+                   "use_web_fallback": web}
         if weak:
             payload["generator_model"] = "llama3.2:3b"
         try:
@@ -105,10 +108,28 @@ with st.sidebar:
             st.error(f"Request failed: {e}")
 
     st.divider()
+    st.subheader("Add your own documents")
+    uploads = st.file_uploader("Upload files (PDF / Word / txt / md)",
+                               type=["pdf", "docx", "txt", "md"],
+                               accept_multiple_files=True)
+    if st.button("Index uploaded files", use_container_width=True, disabled=not uploads):
+        files = [("files", (u.name, u.getvalue())) for u in uploads]
+        try:
+            with st.spinner("Extracting, chunking and indexing..."):
+                resp = requests.post(f"{API_BASE}/documents/upload", files=files, timeout=600)
+            if resp.status_code == 200:
+                st.success(f"Indexed {resp.json()['total_chunks_indexed']} chunks "
+                           f"from {len(uploads)} file(s).")
+            else:
+                st.error(f"Upload failed: {resp.status_code} {resp.text[:200]}")
+        except requests.RequestException as e:
+            st.error(f"Upload failed: {e}")
+
+    st.divider()
     if st.button("↻ Refresh", use_container_width=True):
         load_traces.clear()
         st.rerun()
-    if st.button("📥 Re-index corpus", use_container_width=True):
+    if st.button("📥 Re-index built-in corpus", use_container_width=True):
         _post("/ingest")
         st.toast("Corpus re-indexed")
 
@@ -208,6 +229,8 @@ selected = st.selectbox(
 trace = next(t for t in traces if t["trace_id"] == selected)
 st.divider()
 st.markdown(f"### Query\n> {trace['query']}")
+if trace.get("config", {}).get("source") == "web":
+    st.caption("🌐 Answered using the **web-search fallback** (local corpus had nothing relevant).")
 
 # Verdict banner
 if trace.get("verdict"):

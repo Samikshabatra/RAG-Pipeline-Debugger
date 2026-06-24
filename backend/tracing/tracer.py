@@ -17,7 +17,7 @@ from time import perf_counter
 
 from ..config import get_settings
 from ..models import GenerateInput, RerankInput, RetrieveInput, RetrievedChunk
-from ..pipeline import generator, reranker, retriever
+from ..pipeline import generator, reranker, retriever, web_search
 from . import store
 from .trace_models import Span, Trace
 
@@ -41,6 +41,7 @@ def run_traced(
     top_k: int | None = None,
     top_n: int | None = None,
     use_reranker: bool | None = None,
+    use_web_fallback: bool | None = None,
     generator_model: str | None = None,
     expected_doc_id: str | None = None,
     persist: bool = True,
@@ -49,20 +50,16 @@ def run_traced(
     top_k = top_k or cfg.retrieve_top_k
     top_n = top_n or cfg.rerank_top_n
     use_reranker = cfg.use_reranker if use_reranker is None else use_reranker
+    use_web_fallback = cfg.enable_web_fallback if use_web_fallback is None else use_web_fallback
 
     spans: list[Span] = []
+    source = "local"
 
-    # --- Step 1: Retrieve ---
+    # --- Step 1: Retrieve (local corpus) ---
     t0 = perf_counter()
     retrieved = retriever.retrieve(RetrieveInput(query=query, top_k=top_k))
-    spans.append(
-        Span(
-            step="retrieve",
-            latency_ms=(perf_counter() - t0) * 1000,
-            meta={"top_k": top_k, "n_returned": len(retrieved.chunks)},
-            chunks=retrieved.chunks,
-        )
-    )
+    retrieve_chunks = retrieved.chunks
+    retrieve_latency = (perf_counter() - t0) * 1000
 
     # --- Step 2: Rerank (or bypass) ---
     t1 = perf_counter()
@@ -76,11 +73,41 @@ def run_traced(
             c.model_copy(update={"rank": i + 1})
             for i, c in enumerate(retrieved.chunks[:top_n])
         ]
+    rerank_latency = (perf_counter() - t1) * 1000
+
+    # --- Web-search fallback: if local relevance is poor, retrieve from the web ---
+    best_local = max((c.score for c in reranked_chunks), default=float("-inf"))
+    web_triggered = False
+    if use_web_fallback and (not reranked_chunks or best_local < cfg.web_fallback_threshold):
+        tw = perf_counter()
+        web_chunks = web_search.search_chunks(query, num_results=cfg.web_results)
+        if web_chunks:
+            web_triggered = True
+            source = "web"
+            retrieve_chunks = web_chunks
+            retrieve_latency += (perf_counter() - tw) * 1000
+            tr = perf_counter()
+            reranked_chunks = reranker.rerank(
+                RerankInput(query=query, chunks=web_chunks, top_n=top_n)
+            ).chunks
+            rerank_latency = (perf_counter() - tr) * 1000
+
+    spans.append(
+        Span(
+            step="retrieve",
+            latency_ms=retrieve_latency,
+            meta={"top_k": top_k, "n_returned": len(retrieve_chunks),
+                  "source": source, "local_best_score": round(best_local, 3)
+                  if best_local != float("-inf") else None},
+            chunks=retrieve_chunks,
+        )
+    )
     spans.append(
         Span(
             step="rerank",
-            latency_ms=(perf_counter() - t1) * 1000,
-            meta={"top_n": top_n, "enabled": use_reranker},
+            latency_ms=rerank_latency,
+            meta={"top_n": top_n, "enabled": use_reranker, "source": source,
+                  "web_fallback": web_triggered},
             chunks=reranked_chunks,
         )
     )
@@ -118,6 +145,8 @@ def run_traced(
             "top_n": top_n,
             "use_reranker": use_reranker,
             "model": generated.model,
+            "source": source,
+            "web_fallback": web_triggered,
         },
         spans=spans,
         answer=generated.answer,

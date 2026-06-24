@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     rerank_top_n: int = 4       # how many survive rerank into the generator
     use_reranker: bool = True   # off => feed raw retrieval top_n (weaker config)
 
+    # --- Web-search fallback (agentic RAG) ---
+    # When the best local rerank score is below the threshold, fall back to the
+    # live web instead of answering from an irrelevant local corpus.
+    enable_web_fallback: bool = False
+    web_fallback_threshold: float = 0.0  # cross-encoder logit; <0 means irrelevant
+    web_results: int = 4
+
     # --- Local state ---
     chroma_dir: str = "data/chroma"
     collection_name: str = "corpus"

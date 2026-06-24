@@ -60,6 +60,22 @@ def index_documents(docs: list[Document]) -> int:
     return len(docs)
 
 
+def add_documents(docs: list[Document]) -> int:
+    """Append documents to the existing collection (does NOT clear it). Used by
+    the upload/ingest path so users can grow the corpus without a reset."""
+    if not docs:
+        return 0
+    collection = _get_collection()
+    vectors = embeddings.embed_texts([d.text for d in docs])
+    collection.add(
+        ids=[d.doc_id for d in docs],
+        embeddings=vectors,
+        documents=[d.text for d in docs],
+        metadatas=[{"title": d.title, "category": d.category} for d in docs],
+    )
+    return len(docs)
+
+
 def query(query_vector: list[float], top_k: int) -> list[dict]:
     """Return the top_k nearest documents as plain dicts with a 0-1 similarity
     score (higher = more similar)."""
