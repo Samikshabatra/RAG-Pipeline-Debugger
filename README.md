@@ -262,7 +262,13 @@ config levers, root-cause attribution for every failure type, and the API endpoi
 - [ ] More adversarial corpus traps
 
 ---
+Author
 
+Samiksha Batra
+M.Sc. Artificial Intelligence & Machine Learning
+CHRIST (Deemed to be University), Bengaluru
+
+---
 ## 📄 License
 
 MIT — free to use and adapt.
